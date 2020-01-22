@@ -1,0 +1,5 @@
+lark-parser==0.7.8
+minizinc==0.2.1
+Pygments==2.5.2
+PySide2==5.14.0
+shiboken2==5.14.0
