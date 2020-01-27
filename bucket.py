@@ -147,6 +147,11 @@ class BucketGame(QWidget):
         self.reset = QPushButton("Reset")
         self.layout = QGridLayout()
         self.main_layout = QVBoxLayout()
+
+        self.n_move = 0
+        self.title = QLabel()
+        self.main_layout.addWidget(self.title)
+
         self.btn_layout = QHBoxLayout()
 
         self.main_layout.addLayout(self.layout)
@@ -156,7 +161,6 @@ class BucketGame(QWidget):
         self.btn_layout.addWidget(self.edit)
         self.btn_layout.addWidget(self.reset)
         self.main_layout.addLayout(self.btn_layout)
-
 
         self.setLayout(self.main_layout)
         self.update_layout()
@@ -174,6 +178,7 @@ class BucketGame(QWidget):
         if self.is_possible():
             for b in self.buckets:
                 b.switch_editable()
+            self.n_move = 0
         else:
             QMessageBox.warning(self, "Attention", f"Le problème est insoluble")  
 
@@ -198,6 +203,7 @@ class BucketGame(QWidget):
         bucket.selected.connect(self.select)
         bucket.removed.connect(self.remove)
         self.update_layout()
+        self.update_title()
     
     def new_bucket(self):
         self.add_bucket(Bucket(0, 0, 0))
@@ -226,7 +232,33 @@ class BucketGame(QWidget):
             self.bucket_selected.emptying(bucket)
             self.bucket_selected.changed_color(False)
             self.bucket_selected = None    
+            self.n_move += 1
             bucket.changed_color(False)
+        self.update_title()
+
+    def is_victory(self):
+        for b in self.buckets:
+            if not b.good():
+                return False
+        return True
+
+    def update_title(self):
+        if self.is_victory():
+            self.title.setText(f"Victoire en {self.n_move} tours")
+            #for bucket in self.buckets:
+            #    bucket.changed_color(True, Qt.green)
+        else:
+            self.title.setText(f"Tours {self.n_move}")
+
+
+    def move_auto(self, transfered, total_steps, i = 1):
+        transfer = transfered[i]
+        self.select(self.buckets[transfer[0] - 1])
+        self.select(self.buckets[transfer[1] - 1])
+        self.update_layout()
+        self.update_title()
+        if i != total_steps:
+            QTimer.singleShot(500, lambda: self.move_auto(transfered, total_steps, i + 1))
 
     def to_solve(self):
         from minizinc import Instance, Model, Solver
@@ -239,6 +271,8 @@ class BucketGame(QWidget):
         instance["goal"] = [b.goal for b in self.buckets] 
         result = instance.solve()
         if result is not None:
-            QMessageBox.information(self, "Solution", f"Le problème peut être résoulu en {result['total_steps']}")
+            print(result)
+            #QMessageBox.information(self, "Solution", f"Le problème peut être résoulu en {result['total_steps']}")
+            self.move_auto(result["transfered"], result["total_steps"] - 1)
         else:
             QMessageBox.information(self, "Solution", f"Le problème est insoluble")

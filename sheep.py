@@ -68,10 +68,15 @@ class SheepGame(QWidget):
         self.num.valueChanged.connect(self.modify_num_sheep)
         self.layout.addWidget(self.num)
 
+        self.btn_auto = QPushButton("Auto")
+        self.btn_auto.clicked.connect(self.auto)
+        self.layout.addWidget(self.btn_auto)
+
         self.setLayout(self.layout)
 
-
     def is_victory(self):
+        if self.get_sheep(len(self.sheeps) // 2).color != Sheep.EMPTY:
+            return False
         for x1 in range(len(self.sheeps)):
             for x2 in range(x1 + 1, len(self.sheeps)):
                 if self.get_sheep(x1).color == Sheep.WHITE and self.get_sheep(x2).color == Sheep.BLACK:
@@ -126,6 +131,7 @@ class SheepGame(QWidget):
                 self.sheep_selected.changed_color(True, Qt.red)
                 QTimer.singleShot(1000, self.sheep_selected.changed_color)
             self.sheep_selected = None
+        self.update_sheep()
         self.update_title()
         
     def switch(self, sheep1, sheep2):
@@ -133,6 +139,7 @@ class SheepGame(QWidget):
         sheep1.position = sheep2.position
         sheep2.position = tmp
         self.update_sheep()
+        self.update_title()
 
     def move_possible(self, sheep1, sheep2):
         dif = sheep1.position - sheep2.position
@@ -147,3 +154,34 @@ class SheepGame(QWidget):
     def update_sheep(self):
         for sheep in sorted(self.sheeps, key=lambda x: x.position):
             self.layoutSheeps.addWidget(sheep)
+
+    def move_auto(self, transfered, i = 1):
+        transfer = transfered[i]
+        if self.get_sheep(transfer[0] - 1).color == Sheep.EMPTY:
+            self.move(self.get_sheep(transfer[1] - 1))
+            self.move(self.get_sheep(transfer[0] - 1))
+        else:
+            self.move(self.get_sheep(transfer[0] - 1))
+            self.move(self.get_sheep(transfer[1] - 1))
+        self.update_sheep()
+        self.update_title()
+        if i != len(transfered) - 1:
+            QTimer.singleShot(500, lambda: self.move_auto(transfered, i + 1))
+
+    def auto(self):
+        from minizinc import Instance, Model, Solver
+        mouton = Model("./mouton.mzn")
+        gecode = Solver.lookup("gecode")
+        instance = Instance(gecode, mouton)
+        instance["N"] = len(self.sheeps) // 2
+        if instance["N"] == 1:
+            instance["max_steps"] = 4
+        elif instance["N"] == 2:
+            instance["max_steps"] = 9
+        else:
+            instance["max_steps"] = 16
+        result = instance.solve()
+        if result is not None:
+            self.move_auto(result["transfered"])
+        else:
+            QMessageBox.information(self, "Solution", f"Le problème est insoluble")
