@@ -3,7 +3,8 @@ import time
 from PySide2.QtWidgets import (QApplication, QLabel, QPushButton,
                                QVBoxLayout, QWidget, QHBoxLayout,
                                QGridLayout, QScrollArea, QSpinBox,
-                               QMessageBox, QTabWidget)
+                               QMessageBox, QTabWidget, QSizePolicy,
+                               QSpacerItem)
 from PySide2.QtSvg import QSvgWidget
 from PySide2.QtCore import Slot, Signal, Qt, QTimer
 from PySide2.QtGui import QIcon, QPalette, QColor
@@ -13,6 +14,7 @@ class Bucket(QWidget):
     IMG_FULL = QIcon("img/Full_bucket.svg")
     IMG_HALF = QIcon("img/Half_full_bucket.svg")
     selected = Signal(object)
+    removed = Signal(object)
     
     def __init__(self, capacity, init, goal):
         super().__init__()
@@ -22,24 +24,30 @@ class Bucket(QWidget):
         self.goal = goal
         self.editable = False
         self.btn = QPushButton()
-        self.btn.setMinimumHeight(100)
+        self.btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.btn.clicked.connect(self.select)
-        self.text = QLabel()
         self.layout = QVBoxLayout()
         self.layout.addWidget(self.btn)
-        self.layout.addWidget(self.text)
+
+        self.btn_remove = QPushButton("X")
+        self.btn_remove.clicked.connect(self.remove)
+        self.layout.addWidget(self.btn_remove)
+
         self.edit_capacity = QSpinBox()
         self.edit_capacity.setPrefix("Capacity ")
+        self.edit_capacity.setSuffix(" L")
         self.edit_capacity.valueChanged.connect(self.change_capacity)
         self.layout.addWidget(self.edit_capacity)
         self.edit_capacity.hide()
         self.edit_init = QSpinBox()
         self.edit_init.setPrefix("Init ")
+        self.edit_init.setSuffix(" L")
         self.edit_init.valueChanged.connect(self.change_init)
         self.layout.addWidget(self.edit_init)
         self.edit_init.hide()
         self.edit_goal = QSpinBox()
         self.edit_goal.setPrefix("Goal ")
+        self.edit_goal.setSuffix(" L")
         self.edit_goal.valueChanged.connect(self.change_goal)
         self.layout.addWidget(self.edit_goal)
         self.edit_goal.hide()
@@ -76,6 +84,9 @@ class Bucket(QWidget):
         self.current = self.init
         self.update()
 
+    def remove(self):
+        self.removed.emit(self)
+
     def select(self):
         self.selected.emit(self)
 
@@ -93,8 +104,7 @@ class Bucket(QWidget):
         self.edit_goal.setMaximum(self.capacity)
 
     def update_text(self):
-        self.btn.setText(f"{self.current} / {self.capacity} L")
-        self.text.setText(f"Objectif {self.goal} L")
+        self.btn.setText(f"{self.current} ({self.goal}) / {self.capacity} L")
 
     def update_image(self):
         if self.current == 0:
@@ -136,7 +146,19 @@ class BucketGame(QWidget):
         self.edit = QPushButton("Edit")
         self.reset = QPushButton("Reset")
         self.layout = QGridLayout()
-        self.setLayout(self.layout)
+        self.main_layout = QVBoxLayout()
+        self.btn_layout = QHBoxLayout()
+
+        self.main_layout.addLayout(self.layout)
+
+        self.btn_layout.addWidget(self.add)
+        self.btn_layout.addWidget(self.solve)
+        self.btn_layout.addWidget(self.edit)
+        self.btn_layout.addWidget(self.reset)
+        self.main_layout.addLayout(self.btn_layout)
+
+
+        self.setLayout(self.main_layout)
         self.update_layout()
         self.bucket_selected = None
         self.add.clicked.connect(self.new_bucket)
@@ -149,8 +171,16 @@ class BucketGame(QWidget):
             b.reset()
 
     def edit_all(self):
-        for b in self.buckets:
-            b.switch_editable()
+        if self.is_possible():
+            for b in self.buckets:
+                b.switch_editable()
+        else:
+            QMessageBox.warning(self, "Attention", f"Le problème est insoluble")  
+
+    def is_possible(self):
+        total_init = sum([b.init for b in self.buckets])
+        total_goal = sum([b.goal for b in self.buckets])
+        return total_init == total_goal
 
     def update_layout(self):
         i = 0
@@ -160,20 +190,23 @@ class BucketGame(QWidget):
             self.layout.removeWidget(bucket)
             self.layout.addWidget(bucket, i // max_columns, i % max_columns)
             i += 1
-        if i == 0:
-            max_columns -= 1
-        self.layout.addWidget(self.add, i // max_columns + 1, 0, Qt.AlignBottom | Qt.AlignHCenter)
-        self.layout.addWidget(self.solve, i // max_columns + 1, 1, Qt.AlignBottom | Qt.AlignHCenter)
-        self.layout.addWidget(self.edit, i // max_columns + 1, 2, Qt.AlignBottom | Qt.AlignHCenter)
-        self.layout.addWidget(self.reset, i // max_columns + 1, 3, Qt.AlignBottom | Qt.AlignHCenter)
+        if i % max_columns > 0:
+            self.layout.addItem(QSpacerItem(1, 1, QSizePolicy.Expanding, QSizePolicy.Expanding), i // max_columns, i % max_columns, i // max_columns, max_columns)
 
     def add_bucket(self, bucket):
         self.buckets.append(bucket)
         bucket.selected.connect(self.select)
+        bucket.removed.connect(self.remove)
         self.update_layout()
     
     def new_bucket(self):
         self.add_bucket(Bucket(0, 0, 0))
+
+    def remove(self, bucket):
+        self.buckets.remove(bucket)
+        self.layout.removeWidget(bucket)
+        bucket.hide()
+        self.update_layout()
 
     def select(self, bucket):
         if self.bucket_selected is None:
